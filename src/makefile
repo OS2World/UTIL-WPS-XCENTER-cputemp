@@ -19,7 +19,7 @@
 XWP_INC_PATH = ..\..\xworkplace\include
 
 AUTOR = Andrey Vasilkin
-VERSION = 1.0.0
+VERSION = 1.1.0
 COMMENT = XCenter CPU temperature plugin DLL
 
 DLL_NAME = cput

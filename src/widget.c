@@ -205,7 +205,6 @@ typedef struct _CPUTEMPPRIVATE {
   CPUTEMPSETUP   Setup;           // Settings that correspond to a setup string.
   ULONG          ulTimerId;       // Timer Id for updates.
 
-  ULONG          ulCPUTempRC;
   ULONG          ulMaxTemp;
   ULONG          ulCurTemp;
 
@@ -231,37 +230,37 @@ static ULONG _convToFahrenheit(ULONG ulTemp)
 static BOOL _queryTemp(PXCENTERWIDGET pWidget)
 {
   PCPUTEMPPRIVATE	pPrivate = (PCPUTEMPPRIVATE)pWidget->pUser;
-  CPUTEMP		stCPUTemp;
+  CPUTEMP		aCPUList[64];
+  PCPUTEMP		pCPU = &aCPUList;
+  ULONG			cCPU;
   ULONG			ulIdx;
   CHAR			szCPU[32];
   CHAR			szUM[16];
   CHAR			szBuf[64];
   ULONG			cbCPU, cbBuf;
-  LONG			lTemp;
+  ULONG			ulRC;
   ULONG			ulId;
+
+  pPrivate->ulCurTemp = 0;
+  pPrivate->ulMaxTemp = 0;
 
   // Query current temperatures of all processors, maximum allowed T. and
   // number of processors.
-  stCPUTemp.cbSize = sizeof(CPUTEMP);
-  pPrivate->ulCPUTempRC = cputempQuery( &stCPUTemp );
+  ulRC = cputempQuery( sizeof(aCPUList) / sizeof(CPUTEMP), &aCPUList, &cCPU );
 
-  if ( pPrivate->ulCPUTempRC != CPUTEMP_OK )
+  if ( ulRC != CPUTEMP_OK )
   {
     // Error...
     pPrivate->ulMaxTemp = 0;
 
-    switch( pPrivate->ulCPUTempRC )
+    switch( ulRC )
     {
-      case CPUTEMP_UNSUPPORTED_CPU:
-        ulId = IDS_UNSUPPORTED_CPU;
-        break;
-
       case CPUTEMP_NO_DRIVER:
         ulId = IDS_NO_DRIVER;
         break;
 
       default:
-        cbBuf = sprintf( &szBuf, "Error code: %u", pPrivate->ulCPUTempRC );
+        cbBuf = sprintf( &szBuf, "Error code: %u", ulRC );
         ulId = 0;
     }
 
@@ -276,9 +275,6 @@ static BOOL _queryTemp(PXCENTERWIDGET pWidget)
   // Reset destination string.
   pxstrcpy( &pPrivate->strTooltipText, NULL, 0 );
 
-  pPrivate->ulMaxTemp = stCPUTemp.ulMaxTemp;
-  pPrivate->ulCurTemp = 0;
-
   // Load "CPU "
   cbCPU = WinLoadString( pWidget->pGlobals->hab, hMod, IDS_CPU, 16, &szBuf );
   // Load "øC" or "øF"
@@ -289,29 +285,49 @@ static BOOL _queryTemp(PXCENTERWIDGET pWidget)
 
   // Creating text for tip and determination of the maximum temperature of
   // processors.
-  for( ulIdx = 0; ulIdx < stCPUTemp.cCPU; ulIdx++ )
+  for( ulIdx = 0; ulIdx < cCPU; ulIdx++, pCPU++ )
   {
-    lTemp = stCPUTemp.alTemp[ulIdx];
-
     cbBuf = cbCPU + sprintf( &szBuf[cbCPU], " %u: ", ulIdx ); // "CPU n: "
 
-    if ( (LONG)pPrivate->ulCurTemp < stCPUTemp.alTemp[ulIdx] )
-      pPrivate->ulCurTemp = stCPUTemp.alTemp[ulIdx];
-
-    if ( lTemp == -1 )
+    if ( pCPU->ulCode != CPU_OK )
     {
-      // Processor OFFLINEd - append "Offline" to the string "CPU n: "
-      cbBuf += WinLoadString( pWidget->pGlobals->hab, hMod, IDS_OFFLINE,
-                              sizeof(szBuf) - cbBuf - 2, &szBuf[cbBuf] );
+      switch( pCPU->ulCode )
+      {
+        case CPU_UNSUPPORTED:
+          ulId = IDS_UNSUPPORTED_CPU;
+          break;
+
+        case CPU_OFFLINE:
+          ulId = IDS_OFFLINE;
+          break;
+
+        default:
+          cbBuf += sprintf( &szBuf[cbBuf], "Error %u", ulRC );
+          ulId = 0;
+      }
+
+      if ( ulIdx != 0 )
+        cbBuf += WinLoadString( pWidget->pGlobals->hab, hMod, IDS_OFFLINE,
+                                sizeof(szBuf) - cbBuf - 2, &szBuf[cbBuf] );
       *((PUSHORT)&szBuf[cbBuf]) = '\0\n';
       cbBuf += 2;
     }
     else
+    {
       // Append T. value and UM (like "40 øC\n") to the string "CPU n: "
       cbBuf += sprintf( &szBuf[cbBuf], "%u %s\n",
-                        pPrivate->Setup.fFahrenheit ?
-                          _convToFahrenheit( lTemp ) : lTemp,
+                        pPrivate->Setup.fFahrenheit
+                          ? _convToFahrenheit( pCPU->ulCurTemp )
+                          : pCPU->ulCurTemp,
                         &szUM );
+
+      // New maximum value to display.
+      if ( pPrivate->ulCurTemp < pCPU->ulCurTemp )
+      {
+        pPrivate->ulCurTemp = pCPU->ulCurTemp;
+        pPrivate->ulMaxTemp = pCPU->ulMaxTemp;
+      }
+    }
 
     // Append prepared string to the tip text.
     pxstrcat( &pPrivate->strTooltipText, &szBuf, cbBuf );

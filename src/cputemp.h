@@ -1,26 +1,59 @@
 #ifndef CPUTEMP_H
 #define CPUTEMP_H
 
-#define CPUTEMP_OK                 0
-#define CPUTEMP_UNSUPPORTED_CPU    1
-#define CPUTEMP_NO_DRIVER          2
-#define CPUTEMP_INVALID_ARGUMENT   3
-#define CPUTEMP_AFFINITY_FAILED    4
-#define CPUTEMP_INVALID_VALUE      5
+// Error codes for cputempQuery().
 
-#define CPUTEMP_FL_WAKEUP          1
+// CPUTEMP_OK : Success
+#define CPUTEMP_OK                 0
+
+// CPUTEMP_NO_DRIVER : The driver RDMSR.SYS is not accessible.
+#define CPUTEMP_NO_DRIVER          2
+
+// CPUTEMP_INIT_FAILED : The module was not initialized - not enough memory or
+// other system resources.
+#define CPUTEMP_INIT_FAILED        4
+
+// CPUTEMP_OVERFLOW : Given buffer too small.
+#define CPUTEMP_OVERFLOW	   5
+
+
+// CPUTEMP.ulCode values.
+
+#define CPU_OK                     0
+// CPU_UNSUPPORTED : Not Intel CPU or have no temperature sensors.
+#define CPU_UNSUPPORTED            1
+// CPU_IOCTL_ERROR : The driver RDMSR.SYS is not accessible.
+#define CPU_IOCTL_ERROR            2
+// CPU_INVALID_VALUE : Invalid value for sensor received via RDMSR.
+#define CPU_INVALID_VALUE          3
+// CPU_OFFLINE : Processor OFFLINE status.
+#define CPU_OFFLINE                4
+
 
 typedef struct _CPUTEMP {
-  unsigned long    cbSize;      // Size of structure.
-  unsigned long    cCPU;        // Numer of CPUs installed.
-  unsigned long    ulMaxTemp;   // Maximum temerature on CPU.
-  unsigned long    ulTimestamp; // Last alTemp update timestamp [msec].
-  long             alTemp[64];  // Temperatures for each CPU (core), value -1
-                                // means that CPU is OFFLINEd and the data was
-                                // not obtained.
+  unsigned long  ulId;
+                 // Procesor ID numbered 1 through n-1, where there are n
+                 // processors in total.
+
+  unsigned long  ulCode;        // CPU_xxxxxxx
+  unsigned long  ulAPICPhysId;
+  unsigned long  ulMaxTemp;
+  unsigned long  ulCurTemp;
+
+  unsigned long  ulTimestamp;
+                 // Last ulCurTemp update timestamp in milliseconds.
+
 } CPUTEMP, *PCPUTEMP;
 
-void APIENTRY cputempSetFlags(unsigned long ulNewFlags);
-int APIENTRY cputempQuery(PCPUTEMP pstCPUTemp);
+
+// cputempQuery()
+//
+// Fills the buffer pCPUInfo up to cCPUInfo records of CPUTEMP.
+// Number of actual written items stored in pulActual.
+// Returns error code CPUTEMP_xxxxxxx. When an error code CPUTEMP_OVERFLOW
+// returned pulActual will contain the number of required records.
+
+unsigned long APIENTRY cputempQuery(unsigned long cCPUInfo, PCPUTEMP pCPUInfo,
+                                    unsigned long *pulActual);
 
 #endif // CPUTEMP_H
